@@ -1,0 +1,11 @@
+# requirements_training.txt – additional dependencies for the training container
+# (Core Training Hub + PyTorch dependencies installed directly in the Dockerfile)
+
+# Evaluation
+sqlglot>=23.0.0    # SQL parsing for exact-match normalization
+rouge-score>=0.1.2
+
+# Utilities
+python-dotenv>=1.0.0
+rich>=13.0.0
+pandas>=2.0.0

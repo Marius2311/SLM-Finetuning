@@ -1,0 +1,222 @@
+# =============================================================================
+# SDG Hub Flow: Text-to-SQL Enrichment
+# =============================================================================
+# This YAML defines the full synthetic data generation pipeline using
+# SDG Hub's block/flow architecture.
+#
+# The flow runs three enrichment stages on each seed example:
+#   1. complexity_upgrade  – rewrite the SQL into a harder variant
+#   2. schema_variant      – generate a new schema + matching question
+#   3. reasoning_trace     – add chain-of-thought reasoning to the SQL
+#
+# Each stage is optional and can be toggled in pipeline_config.yaml.
+# =============================================================================
+
+metadata:
+  flow_id: "text2sql-enrichment-v1"
+  description: "Enrich Text-to-SQL seed data with synthetic harder variants and reasoning traces"
+  version: "1.0.0"
+  tags:
+    - "text-to-sql"
+    - "sql-generation"
+    - "question-generation"
+    - "reasoning"
+  recommended_teacher_models:
+    - "claude-sonnet-4-20250514"
+    - "gpt-4o"
+    - "Qwen/Qwen2.5-72B-Instruct"
+
+# Input schema: what columns must exist in the input dataset
+input_schema:
+  required:
+    - question
+    - schema
+    - sql
+    - complexity
+    - domain
+  optional:
+    - explanation
+    - task_type
+
+# Output schema: columns this flow adds
+output_schema:
+  - upgraded_question
+  - upgraded_sql
+  - upgraded_complexity
+  - variant_schema
+  - variant_question
+  - variant_sql
+  - reasoning_trace
+  - quality_score
+
+# =============================================================================
+# BLOCKS
+# =============================================================================
+blocks:
+
+  # ---------------------------------------------------------------------------
+  # Stage 1: Complexity Upgrade
+  # Takes an existing SQL query and rewrites it to be harder.
+  # E.g.: basic SELECT → SELECT with JOINs + GROUP BY + HAVING
+  # ---------------------------------------------------------------------------
+  - block_type: "PromptBuilderBlock"
+    block_config:
+      block_name: "build_complexity_upgrade_prompt"
+      input_cols:
+        - question
+        - schema
+        - sql
+        - complexity
+        - domain
+      output_cols: "complexity_upgrade_prompt"
+      prompt_config_path: "sdg_pipeline/prompts/complexity_upgrade.yaml"
+
+  - block_type: "LLMChatBlock"
+    block_config:
+      block_name: "generate_complexity_upgrade"
+      input_cols: "complexity_upgrade_prompt"
+      output_cols: "complexity_upgrade_raw"
+      max_tokens: 1024
+      temperature: 0.8
+      async_mode: true
+
+  - block_type: "TextParserBlock"
+    block_config:
+      block_name: "parse_upgraded_question"
+      input_cols: "complexity_upgrade_raw"
+      output_cols: "upgraded_question"
+      start_tags:
+        - "[QUESTION]"
+      end_tags:
+        - "[/QUESTION]"
+
+  - block_type: "TextParserBlock"
+    block_config:
+      block_name: "parse_upgraded_sql"
+      input_cols: "complexity_upgrade_raw"
+      output_cols: "upgraded_sql"
+      start_tags:
+        - "[SQL]"
+      end_tags:
+        - "[/SQL]"
+
+  - block_type: "TextParserBlock"
+    block_config:
+      block_name: "parse_upgraded_complexity"
+      input_cols: "complexity_upgrade_raw"
+      output_cols: "upgraded_complexity"
+      start_tags:
+        - "[COMPLEXITY]"
+      end_tags:
+        - "[/COMPLEXITY]"
+
+  # ---------------------------------------------------------------------------
+  # Stage 2: Schema Variant Generation
+  # Generate a completely new schema (different domain or table structure)
+  # paired with a matching natural language question and SQL answer.
+  # This teaches the model to generalize to unseen schemas.
+  # ---------------------------------------------------------------------------
+  - block_type: "PromptBuilderBlock"
+    block_config:
+      block_name: "build_schema_variant_prompt"
+      input_cols:
+        - domain
+        - complexity
+        - task_type
+      output_cols: "schema_variant_prompt"
+      prompt_config_path: "sdg_pipeline/prompts/schema_variant.yaml"
+
+  - block_type: "LLMChatBlock"
+    block_config:
+      block_name: "generate_schema_variant"
+      input_cols: "schema_variant_prompt"
+      output_cols: "schema_variant_raw"
+      max_tokens: 1500
+      temperature: 0.9
+      async_mode: true
+
+  - block_type: "TextParserBlock"
+    block_config:
+      block_name: "parse_variant_schema"
+      input_cols: "schema_variant_raw"
+      output_cols: "variant_schema"
+      start_tags:
+        - "[SCHEMA]"
+      end_tags:
+        - "[/SCHEMA]"
+
+  - block_type: "TextParserBlock"
+    block_config:
+      block_name: "parse_variant_question"
+      input_cols: "schema_variant_raw"
+      output_cols: "variant_question"
+      start_tags:
+        - "[QUESTION]"
+      end_tags:
+        - "[/QUESTION]"
+
+  - block_type: "TextParserBlock"
+    block_config:
+      block_name: "parse_variant_sql"
+      input_cols: "schema_variant_raw"
+      output_cols: "variant_sql"
+      start_tags:
+        - "[SQL]"
+      end_tags:
+        - "[/SQL]"
+
+  # ---------------------------------------------------------------------------
+  # Stage 3: Reasoning Trace
+  # Generate a step-by-step reasoning trace that explains HOW to arrive
+  # at the SQL from the question. This is the "chain-of-thought" that
+  # makes the model learn SQL reasoning, not just pattern matching.
+  # ---------------------------------------------------------------------------
+  - block_type: "PromptBuilderBlock"
+    block_config:
+      block_name: "build_reasoning_trace_prompt"
+      input_cols:
+        - question
+        - schema
+        - sql
+      output_cols: "reasoning_trace_prompt"
+      prompt_config_path: "sdg_pipeline/prompts/reasoning_trace.yaml"
+
+  - block_type: "LLMChatBlock"
+    block_config:
+      block_name: "generate_reasoning_trace"
+      input_cols: "reasoning_trace_prompt"
+      output_cols: "reasoning_trace_raw"
+      max_tokens: 1024
+      temperature: 0.3   # Lower temp: we want precise, factual reasoning
+      async_mode: true
+
+  - block_type: "TextParserBlock"
+    block_config:
+      block_name: "parse_reasoning_trace"
+      input_cols: "reasoning_trace_raw"
+      output_cols: "reasoning_trace"
+      start_tags:
+        - "[REASONING]"
+      end_tags:
+        - "[/REASONING]"
+
+  # ---------------------------------------------------------------------------
+  # Stage 4: Quality Scoring
+  # Custom block (see sdg_pipeline/blocks/sql_complexity_filter.py)
+  # Scores each generated example from 0.0 to 1.0 based on:
+  #   - SQL syntactic validity
+  #   - Whether generated SQL is actually harder than the original
+  #   - Completeness of parsed fields
+  # ---------------------------------------------------------------------------
+  - block_type: "SQLComplexityFilterBlock"
+    block_config:
+      block_name: "quality_scorer"
+      input_cols:
+        - sql
+        - upgraded_sql
+        - variant_sql
+        - upgraded_question
+        - variant_question
+        - reasoning_trace
+      output_cols: "quality_score"
+      min_score_threshold: 0.7   # Examples below this are dropped

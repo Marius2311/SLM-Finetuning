@@ -1,0 +1,84 @@
+# =============================================================================
+# Dockerfile.training – Training Hub finetuning container
+# =============================================================================
+# Built for NVIDIA GB10 (Blackwell architecture, CUDA 12.8)
+#
+# IMPORTANT: The GB10 uses consumer Blackwell (not datacenter Blackwell).
+# It behaves like an RTX 5070 iGPU in terms of CUDA support.
+# We use the official PyTorch CUDA 12.1 base which works on Blackwell.
+#
+# If you run into CUDA issues with GB10:
+#   1. Check driver version: nvidia-smi
+#   2. Ensure CUDA >= 12.x: nvcc --version
+#   3. You may need: pip install torch --index-url https://download.pytorch.org/whl/cu128
+# =============================================================================
+
+FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-devel
+
+LABEL maintainer="text2sql-finetune-pipeline"
+LABEL description="Training Hub LoRA/SFT finetuning for Text-to-SQL"
+
+# ---------------------------------------------------------------------------
+# System dependencies
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    build-essential \
+    ninja-build \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Python dependencies
+# ---------------------------------------------------------------------------
+WORKDIR /app
+
+COPY docker/requirements_training.txt .
+
+# Install Training Hub with CUDA extras
+# Note: flash-attn requires --no-build-isolation on some systems
+RUN pip install --upgrade pip && \
+    pip install training-hub && \
+    pip install training-hub[cuda] --no-build-isolation || \
+    echo "CUDA extras install may have warnings – proceeding"
+
+# Install additional dependencies
+RUN pip install \
+    datasets \
+    huggingface-hub \
+    transformers \
+    accelerate \
+    peft \
+    bitsandbytes \
+    sentencepiece \
+    pyyaml \
+    tqdm \
+    tensorboard \
+    -r requirements_training.txt
+
+# ---------------------------------------------------------------------------
+# Copy project code
+# ---------------------------------------------------------------------------
+COPY . .
+
+# ---------------------------------------------------------------------------
+# Data & model directories (mounted as volumes)
+# ---------------------------------------------------------------------------
+RUN mkdir -p /app/data/final /app/data/final/checkpoints /app/logs /data/hf_cache
+
+# ---------------------------------------------------------------------------
+# Environment
+# ---------------------------------------------------------------------------
+ENV HF_HOME=/data/hf_cache
+ENV TRANSFORMERS_CACHE=/data/hf_cache
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Optimize for GB10 memory
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# ---------------------------------------------------------------------------
+# Entrypoint
+# ---------------------------------------------------------------------------
+CMD ["python", "training_pipeline/train.py", "--config", "config/pipeline_config.local.yaml"]

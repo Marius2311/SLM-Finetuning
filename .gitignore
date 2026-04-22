@@ -1,0 +1,61 @@
+# =============================================================================
+# .gitignore – Text-to-SQL Finetuning Pipeline
+# =============================================================================
+
+# NEVER commit secrets or local configs
+config/pipeline_config.local.yaml
+*.env
+.env*
+
+# Data (too large for git – use DVC or just document paths)
+data/raw/
+data/generated/
+data/final/
+data/evaluation/
+
+# Model checkpoints (very large)
+checkpoints/
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# HuggingFace cache
+.cache/
+hf_cache/
+
+# Logs
+logs/
+*.log
+runs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker/*.tar
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

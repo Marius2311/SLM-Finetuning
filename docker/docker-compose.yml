@@ -1,0 +1,149 @@
+# =============================================================================
+# docker-compose.yml – Text-to-SQL Finetuning Pipeline
+# =============================================================================
+# Services:
+#   sdg        – Data preparation + SDG Hub generation (CPU, calls API)
+#   training   – Training Hub finetuning (GPU required)
+#   vllm       – Optional: local vLLM server as teacher model (GPU)
+#
+# Usage:
+#   docker compose run --rm sdg python scripts/prepare_data.py
+#   docker compose run --rm sdg python sdg_pipeline/run_sdg.py --config config/pipeline_config.local.yaml
+#   docker compose run --rm sdg python scripts/mix_datasets.py
+#   docker compose run --rm training python training_pipeline/train.py --config config/pipeline_config.local.yaml
+#   docker compose run --rm training python evaluation/evaluate.py --model-path /app/data/final/checkpoints/lora
+#
+# Optional teacher model (local vLLM):
+#   docker compose up -d vllm
+#   # Wait for vLLM to be ready, then run SDG with backend: vllm_local
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # SDG Service – Synthetic data generation (no GPU needed)
+  # ---------------------------------------------------------------------------
+  sdg:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.sdg
+    image: text2sql-sdg:latest
+    container_name: text2sql_sdg
+
+    volumes:
+      # Project code (live mount for development – remove for production)
+      - ..:/app:ro
+      # Data directories (read-write, persist between runs)
+      - ../data:/app/data
+      - ../logs:/app/logs
+      # HuggingFace model cache (shared with training service)
+      - hf_cache:/data/hf_cache
+      # Your local config with API keys (gitignored)
+      - ../config/pipeline_config.local.yaml:/app/config/pipeline_config.local.yaml:ro
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - HF_HOME=/data/hf_cache
+      # API keys can also be passed as env vars (alternative to config file)
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+    # No GPU needed for SDG (all LLM calls go to external API or vLLM container)
+    # Remove the deploy section entirely for the SDG service
+
+  # ---------------------------------------------------------------------------
+  # Training Service – Training Hub LoRA/SFT (GPU required)
+  # ---------------------------------------------------------------------------
+  training:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.training
+    image: text2sql-training:latest
+    container_name: text2sql_training
+
+    volumes:
+      - ..:/app:ro
+      - ../data:/app/data
+      - ../logs:/app/logs
+      - hf_cache:/data/hf_cache
+      - ../config/pipeline_config.local.yaml:/app/config/pipeline_config.local.yaml:ro
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - HF_HOME=/data/hf_cache
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+      # TensorBoard logs
+      - TENSORBOARD_LOGDIR=/app/logs/tensorboard
+
+    # GPU access for training
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all    # Use all available GPUs (GB10 has 1)
+              capabilities: [gpu]
+
+    # Increase shared memory for DataLoader workers
+    shm_size: '16gb'
+
+  # ---------------------------------------------------------------------------
+  # Optional: Local vLLM Teacher Model
+  # ---------------------------------------------------------------------------
+  # Use this if you want to run the teacher model locally (no API costs).
+  # The GB10's 128GB VRAM can run Qwen2.5-72B-Instruct in fp8/int4.
+  # Start with: docker compose up -d vllm
+  # Then set teacher.backend: vllm_local in your config.
+  # ---------------------------------------------------------------------------
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: text2sql_vllm_teacher
+    profiles: ["vllm"]   # Only starts with: docker compose --profile vllm up
+
+    volumes:
+      - hf_cache:/data/hf_cache
+
+    environment:
+      - HF_HOME=/data/hf_cache
+      - VLLM_WORKER_MULTIPROC_METHOD=spawn
+
+    command: >
+      --model Qwen/Qwen2.5-72B-Instruct
+      --dtype bfloat16
+      --max-model-len 4096
+      --gpu-memory-utilization 0.85
+      --served-model-name Qwen2.5-72B-Instruct
+      --host 0.0.0.0
+      --port 8000
+
+    ports:
+      - "8000:8000"
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    shm_size: '16gb'
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s   # vLLM takes a while to load
+
+# ---------------------------------------------------------------------------
+# Shared volumes
+# ---------------------------------------------------------------------------
+volumes:
+  hf_cache:
+    driver: local
+    driver_opts:
+      type: none
+      # Change this path to where you want to store HF models on your GB10
+      o: bind
+      device: /data/hf_cache   # Create this directory on your host first!
