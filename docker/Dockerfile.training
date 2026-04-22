@@ -1,30 +1,31 @@
 # =============================================================================
 # Dockerfile.training – Training Hub finetuning container
 # =============================================================================
-# Built for NVIDIA GB10 (Blackwell architecture, CUDA 12.8)
+# Built for NVIDIA GB10 (DGX Spark) – ARM64 + CUDA 13.0
 #
-# IMPORTANT: The GB10 uses consumer Blackwell (not datacenter Blackwell).
-# It behaves like an RTX 5070 iGPU in terms of CUDA support.
-# We use the official PyTorch CUDA 12.1 base which works on Blackwell.
+# CRITICAL: The GB10 uses:
+#   - ARM64 (aarch64) CPU – standard x86_64 images throw "exec format error"
+#   - CUDA 13.0 – not CUDA 12.x
+#   - Blackwell SM_121 – not supported by generic pip PyTorch wheels
 #
-# If you run into CUDA issues with GB10:
-#   1. Check driver version: nvidia-smi
-#   2. Ensure CUDA >= 12.x: nvcc --version
-#   3. You may need: pip install torch --index-url https://download.pytorch.org/whl/cu128
+# The ONLY correct base image is NVIDIA's official NGC PyTorch container.
+# It includes a Blackwell-optimized PyTorch build, Triton 3.5, FlashAttention.
+# Do NOT use pytorch/pytorch or pip install torch on this platform.
+#
+# Reference: https://gist.github.com/RobG-git/fd1739c79e2405eb56032dee7901421e
 # =============================================================================
 
-FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-devel
+FROM nvcr.io/nvidia/pytorch:25.11-py3
 
 LABEL maintainer="text2sql-finetune-pipeline"
-LABEL description="Training Hub LoRA/SFT finetuning for Text-to-SQL"
+LABEL description="Training Hub LoRA/SFT finetuning for Text-to-SQL (ARM64/GB10/CUDA13)"
 
 # ---------------------------------------------------------------------------
-# System dependencies
+# System dependencies (apt works normally inside the container)
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
-    build-essential \
     ninja-build \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -36,26 +37,36 @@ WORKDIR /app
 
 COPY docker/requirements_training.txt .
 
-# Install Training Hub with CUDA extras
-# Note: flash-attn requires --no-build-isolation on some systems
+# Install Training Hub
+# Note: we do NOT reinstall torch – the base image has the correct ARM64+CUDA13 build.
+# --no-deps for packages that might try to pull incompatible torch wheels.
 RUN pip install --upgrade pip && \
-    pip install training-hub && \
-    pip install training-hub[cuda] --no-build-isolation || \
-    echo "CUDA extras install may have warnings – proceeding"
+    pip install training-hub
 
-# Install additional dependencies
+# Install ML ecosystem packages
+# bitsandbytes: use the version that supports ARM64
 RUN pip install \
     datasets \
     huggingface-hub \
     transformers \
     accelerate \
     peft \
-    bitsandbytes \
     sentencepiece \
     pyyaml \
     tqdm \
-    tensorboard \
-    -r requirements_training.txt
+    tensorboard
+
+# bitsandbytes ARM64 build (standard pip version is x86 only)
+RUN pip install bitsandbytes --prefer-binary || \
+    pip install https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_multi-backend-refactor/bitsandbytes-0.44.1.dev0-py3-none-manylinux_2_24_aarch64.whl || \
+    echo "bitsandbytes install failed – QLoRA won't work but LoRA/SFT will"
+
+# unsloth: install without deps to avoid pulling wrong torch
+RUN pip install --no-deps unsloth unsloth_zoo || \
+    echo "unsloth install failed – falling back to standard LoRA backend"
+
+# remaining requirements
+RUN pip install -r requirements_training.txt
 
 # ---------------------------------------------------------------------------
 # Copy project code
@@ -63,20 +74,20 @@ RUN pip install \
 COPY . .
 
 # ---------------------------------------------------------------------------
-# Data & model directories (mounted as volumes)
+# Directories (mounted as volumes at runtime)
 # ---------------------------------------------------------------------------
-RUN mkdir -p /app/data/final /app/data/final/checkpoints /app/logs /data/hf_cache
+RUN mkdir -p /app/data/final /app/data/final/checkpoints /app/logs
 
 # ---------------------------------------------------------------------------
 # Environment
 # ---------------------------------------------------------------------------
-ENV HF_HOME=/data/hf_cache
-ENV TRANSFORMERS_CACHE=/data/hf_cache
+ENV HF_HOME=/root/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
-
-# Optimize for GB10 memory
 ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+# Tell PyTorch the correct SM for GB10 Blackwell
+ENV TORCH_CUDA_ARCH_LIST="12.0"
 
 # ---------------------------------------------------------------------------
 # Entrypoint
