@@ -124,10 +124,11 @@ docker compose -f docker/docker-compose.yml run --rm sdg \
 ### 6. Run finetuning
 
 ```bash
+docker compose -f docker/docker-compose.yml build training
+
 docker compose -f docker/docker-compose.yml run --rm training \
-  python3 training_pipeline/train.py \
-  --config config/pipeline_config.yaml \
-  --algorithm lora_sft
+  python3 training_pipeline/train_direct.py \
+  --config config/pipeline_config.yaml
 ```
 
 ### 7. Evaluate

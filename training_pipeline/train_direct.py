@@ -1,8 +1,9 @@
 """
 training_pipeline/train_direct.py
 ==================================
-Direktes LoRA Training mit HuggingFace TRL + PEFT.
-Umgeht Training Hub komplett – kompatibel mit NGC PyTorch Image (transformers 5.6, trl 1.2).
+LoRA Training mit HuggingFace TRL + PEFT.
+Nutzt das NGC PyTorch Image (SM_121 kompatibel).
+Kein torchao, kein bitsandbytes, kein unsloth.
 
 Usage:
     python3 training_pipeline/train_direct.py --config config/pipeline_config.yaml
@@ -46,8 +47,13 @@ def main():
     logger.info(f"Output: {ckpt_dir}")
 
     import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
-    from peft import LoraConfig, get_peft_model
+    logger.info(f"PyTorch version: {torch.__version__}")
+    logger.info(f"CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
+
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from peft import LoraConfig, get_peft_model, TaskType
     from trl import SFTTrainer, SFTConfig
     from datasets import Dataset
 
@@ -56,8 +62,9 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    # Load model
+    # Load model – bfloat16, kein quantize (kein bitsandbytes nötig)
     logger.info("Loading model...")
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
@@ -67,7 +74,7 @@ def main():
     )
     model.enable_input_require_grads()
 
-    # LoRA config
+    # LoRA config – ohne torchao, ohne quantization
     lora_config = LoraConfig(
         r=lora_cfg.get("r", 16),
         lora_alpha=lora_cfg.get("alpha", 32),
@@ -77,7 +84,7 @@ def main():
             "gate_proj", "up_proj", "down_proj"
         ]),
         bias="none",
-        task_type="CAUSAL_LM",
+        task_type=TaskType.CAUSAL_LM,
     )
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
@@ -90,26 +97,29 @@ def main():
             line = line.strip()
             if line:
                 examples.append(json.loads(line))
+    logger.info(f"Loaded {len(examples)} examples")
 
     # Format: apply chat template
     def format_example(ex):
         if "messages" in ex:
-            # Already in chat format
             text = tokenizer.apply_chat_template(
                 ex["messages"],
                 tokenize=False,
                 add_generation_prompt=False,
             )
         else:
-            # Raw format fallback
-            text = f"Schema: {ex.get('schema', '')}\nQuestion: {ex.get('question', '')}\nSQL: {ex.get('sql', '')}"
+            text = (
+                f"### Schema:\n{ex.get('schema', '')}\n\n"
+                f"### Question:\n{ex.get('question', '')}\n\n"
+                f"### SQL:\n{ex.get('sql', '')}"
+            )
         return {"text": text}
 
     formatted = [format_example(ex) for ex in examples]
     dataset = Dataset.from_list(formatted)
-    logger.info(f"Dataset size: {len(dataset)}")
+    logger.info(f"Dataset formatted: {len(dataset)} examples")
 
-    # Training args
+    # Training config
     training_args = SFTConfig(
         output_dir=str(ckpt_dir),
         num_train_epochs=t_cfg.get("num_epochs", 3),
@@ -122,9 +132,11 @@ def main():
         logging_steps=t_cfg.get("logging_steps", 10),
         save_steps=t_cfg.get("save_steps", 200),
         bf16=True,
+        fp16=False,
         dataloader_num_workers=0,
         report_to="none",
         dataset_text_field="text",
+        gradient_checkpointing=True,
     )
 
     trainer = SFTTrainer(

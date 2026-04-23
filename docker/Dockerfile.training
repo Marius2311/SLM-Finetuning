@@ -1,64 +1,55 @@
 # =============================================================================
-# Dockerfile.training – Training container for GB10 (ARM64 + CUDA 13)
+# Dockerfile.training – Training container for GB10 (ARM64 + CUDA 13 + SM_121)
 # =============================================================================
-# Wir nutzen NICHT mehr das NGC PyTorch Image (zu neue/inkompatible Versionen).
-# Stattdessen: NVIDIA CUDA base + manuelle Installation mit gepinnten Versionen.
-#
-# Gepinnte kompatible Versionen:
-#   torch:        2.5.1 (stabil, ARM64 wheels verfügbar via NGC index)
-#   transformers: 4.47.0
-#   peft:         0.13.2 (letzte Version vor torchao-Integration)
-#   trl:          0.12.0
-#   torchao:      NICHT installiert
+# MUSS das NGC PyTorch Image nutzen – einzige Quelle für SM_121-kompatibles
+# PyTorch. Wir pinnen nur peft auf eine Version ohne torchao-Abhängigkeit.
 # =============================================================================
 
-FROM nvcr.io/nvidia/cuda:13.0.1-cudnn-devel-ubuntu24.04
+FROM nvcr.io/nvidia/pytorch:25.11-py3
 
 LABEL maintainer="text2sql-finetune-pipeline"
-LABEL description="Training container for Text-to-SQL finetuning (ARM64/GB10)"
+LABEL description="Training container for Text-to-SQL finetuning (ARM64/GB10/SM_121)"
 
 # ---------------------------------------------------------------------------
 # System dependencies
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    python3-dev \
     git \
     curl \
     ninja-build \
-    libssl-dev \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Python dependencies – alle Versionen gepinnt für Kompatibilität
+# Python dependencies
 # ---------------------------------------------------------------------------
 WORKDIR /app
 
-# Zuerst pip upgraden
-RUN pip install --upgrade pip --break-system-packages
+COPY docker/requirements_training.txt .
 
-# PyTorch für ARM64 + CUDA 13 – von NVIDIA's eigenem Index
-RUN pip install --break-system-packages \
-    torch \
-    torchvision \
-    --index-url https://download.pytorch.org/whl/cu124 || \
-    pip install --break-system-packages torch torchvision
+# Deinstalliere problematische Pakete die mit NGC-Versionen kollidieren
+RUN pip uninstall -y torchao unsloth unsloth-zoo 2>/dev/null || true
 
-# ML Stack mit gepinnten Versionen – KEIN torchao, KEIN unsloth
-RUN pip install --break-system-packages \
+# Installiere peft 0.13.2 – letzte Version OHNE torchao-Abhängigkeit
+# Danach transformers, trl, datasets kompatibel mit NGC-Versionen
+RUN pip install --no-deps \
+    "peft==0.13.2"
+
+RUN pip install \
     "transformers==4.47.0" \
-    "peft==0.13.2" \
     "trl==0.12.0" \
     "accelerate==1.2.0" \
     "datasets==3.2.0" \
     "huggingface-hub==0.27.0" \
-    "bitsandbytes>=0.42.0" \
     "sentencepiece" \
     "pyyaml" \
     "tqdm" \
     "tensorboard"
+
+# training-hub installieren (ohne cuda extras – PyTorch kommt vom NGC Image)
+RUN pip install training-hub
+
+RUN pip install -r requirements_training.txt
 
 # ---------------------------------------------------------------------------
 # Copy project code
@@ -78,6 +69,7 @@ ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+ENV TORCH_CUDA_ARCH_LIST="12.0"
 
 # ---------------------------------------------------------------------------
 # Entrypoint
