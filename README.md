@@ -1,6 +1,7 @@
 # Text-to-SQL SLM Finetuning Pipeline
 
 End-to-end pipeline for finetuning a Small Language Model (SLM) on Text-to-SQL using:
+
 - **SDG Hub** (Red Hat AI Innovation Team) – synthetic data generation
 - **Training Hub** (Red Hat AI Innovation Team) – LoRA/SFT finetuning
 - **NVIDIA GB10 (DGX Spark)** – 128 GB unified VRAM, runs via Docker over SSH
@@ -80,40 +81,57 @@ text2sql_finetune/
 ## Quick Start
 
 ### 1. Prerequisites (on your remote GB10 machine)
+
 ```bash
 # Clone the repo
-git clone <your-repo> text2sql_finetune
-cd text2sql_finetune
+git clone https://github.com/Marius2311/SLM-Finetuning.git
+cd SLM-Finetuning
 
-# Copy and fill in your config
-cp config/pipeline_config.yaml config/pipeline_config.local.yaml
-# Edit: TEACHER_API_KEY, MODEL paths, etc.
+# Edit: TEACHER_API_KEY in config/pipeline_config.yaml
 ```
 
 ### 2. Download and prepare seed data
+
 ```bash
-docker compose run --rm sdg python scripts/prepare_data.py
+docker compose -f docker/docker-compose.yml run --rm sdg \
+  python scripts/prepare_data.py \
+  --config config/pipeline_config.yaml
 ```
 
 ### 3. Run synthetic data generation
+
 ```bash
-docker compose run --rm sdg python sdg_pipeline/run_sdg.py \
-  --config config/pipeline_config.local.yaml \
-  --n-samples 5000
+docker compose -f docker/docker-compose.yml run --rm sdg   python sdg_pipeline/run_sdg.py   --config config/pipeline_config.yaml
 ```
 
 ### 4. Mix and format datasets
+
 ```bash
-docker compose run --rm sdg python scripts/mix_datasets.py
+docker compose -f docker/docker-compose.yml run --rm sdg \
+  python scripts/mix_datasets.py \
+  --config config/pipeline_config.yaml
 ```
 
-### 5. Run finetuning
+### 5. Convert train data to chat format
+
 ```bash
-docker compose run --rm training python training_pipeline/train.py \
-  --config config/pipeline_config.local.yaml
+# QWEN Instruct Model requires chat-like training data
+docker compose -f docker/docker-compose.yml run --rm sdg \
+  python training_pipeline/format_for_training.py \
+  --config config/pipeline_config.yaml
 ```
 
-### 6. Evaluate
+### 6. Run finetuning
+
+```bash
+docker compose -f docker/docker-compose.yml run --rm training \
+  python3 training_pipeline/train.py \
+  --config config/pipeline_config.yaml \
+  --algorithm lora_sft
+```
+
+### 7. Evaluate
+
 ```bash
 docker compose run --rm training python evaluation/evaluate.py \
   --model-path ./data/final/checkpoints/final \
@@ -124,18 +142,19 @@ docker compose run --rm training python evaluation/evaluate.py \
 
 The SDG pipeline supports multiple teacher backends via `config/teacher_backends.yaml`:
 
-| Backend | Config key | Use case |
-|---|---|---|
-| Anthropic Claude API | `anthropic` | Default, highest quality |
-| OpenAI API | `openai` | Alternative cloud API |
-| vLLM local | `vllm_local` | Local GPU, max privacy |
-| Ollama local | `ollama_local` | Easiest local setup |
+| Backend              | Config key     | Use case                 |
+| -------------------- | -------------- | ------------------------ |
+| Anthropic Claude API | `anthropic`    | Default, highest quality |
+| OpenAI API           | `openai`       | Alternative cloud API    |
+| vLLM local           | `vllm_local`   | Local GPU, max privacy   |
+| Ollama local         | `ollama_local` | Easiest local setup      |
 
 Switch backends by setting `TEACHER_BACKEND` in your config.
 
 ## Model Choice: Qwen2.5-7B-Instruct
 
 Selected because:
+
 - Strong baseline code/SQL understanding
 - Fits comfortably in 128GB VRAM (GB10)
 - Excellent Text-to-SQL finetuning results in literature

@@ -59,7 +59,7 @@ teacher:
 # -----------------------------------------------------------------------------
 student:
   # HuggingFace model ID or local path
-  model_id: "Qwen/Qwen2.5-7B-Instruct"
+  model_id: "Qwen/Qwen2.5-0.5B-Instruct"
   # Set to a local path if you've already downloaded the model:
   # model_path: "/data/models/Qwen2.5-7B-Instruct"
 

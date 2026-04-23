@@ -91,7 +91,7 @@ def expand_synthetic_examples(generated: list[dict]) -> list[dict]:
                     "question": row["upgraded_question"],
                     "schema": row["schema"],   # Same schema as original
                     "sql": row["upgraded_sql"],
-                    "thinking": row.get("reasoning_trace", ""),
+                    "thinking": "",
                     "complexity": row.get("upgraded_complexity", "unknown"),
                     "domain": row.get("domain", "unknown"),
                     "source": "synthetic_upgraded",
