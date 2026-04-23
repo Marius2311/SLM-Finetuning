@@ -2,14 +2,10 @@
 # =============================================================================
 # scripts/deploy_vllm.sh
 # =============================================================================
-# Merged das LoRA-Modell mit dem Basismodell und startet einen vLLM Server.
-# Nutzt das NGC PyTorch Image (CUDA 13 / SM_121) – vLLM ist bereits enthalten.
+# Merged das LoRA-Modell und startet einen vLLM Server.
 #
 # Usage:
 #   ./scripts/deploy_vllm.sh <checkpoint_ordner>
-#
-# Beispiel:
-#   ./scripts/deploy_vllm.sh qwen0.5b_50seeds_3epochs_v1
 # =============================================================================
 
 set -e
@@ -20,18 +16,13 @@ if [ -z "$CHECKPOINT_NAME" ]; then
     echo "Usage: ./scripts/deploy_vllm.sh <checkpoint_ordner>"
     echo ""
     echo "Verfügbare Checkpoints:"
-    ls data/final/checkpoints/
+    ls data/final/checkpoints/ 2>/dev/null || echo "(keine)"
     exit 1
 fi
 
 ADAPTER_PATH="data/final/checkpoints/${CHECKPOINT_NAME}"
 MERGED_PATH="data/final/checkpoints/${CHECKPOINT_NAME}_merged"
 PORT=8000
-
-if [ ! -d "$ADAPTER_PATH" ] && [ ! -d "$MERGED_PATH" ]; then
-    echo "Fehler: Checkpoint nicht gefunden: $ADAPTER_PATH"
-    exit 1
-fi
 
 echo "============================================================"
 echo "  Text-to-SQL Modell Deployment"
@@ -58,17 +49,32 @@ fi
 
 # ---------------------------------------------------------------------------
 # Schritt 2: vLLM Server starten
-# Das NGC PyTorch Image enthält bereits vLLM mit CUDA 13 / SM_121 Support.
+#
+# Wir nutzen das offizielle vLLM Docker Image – aber da vLLM kein
+# offizielles SM_121 Image hat, nutzen wir das NGC Image + vLLM Installation.
+#
+# vLLM für SM_121 (GB10 Blackwell) muss aus dem Nightly gebaut werden.
+# Wir nutzen den vLLM-nightly Index der SM_121 unterstützt.
 # ---------------------------------------------------------------------------
 echo ""
 echo "[2/2] Starte vLLM Server auf Port $PORT..."
-echo "      Modell: $MERGED_PATH"
+echo "      (Erste Ausführung: vLLM wird installiert, dauert ~5 Min)"
 echo "      Zum Beenden: Ctrl+C"
 echo ""
 
 docker compose -f docker/docker-compose.yml run --rm \
     -p ${PORT}:8000 \
     training bash -c "
+        # vLLM für SM_121 installieren falls nicht vorhanden
+        python3 -c 'import vllm' 2>/dev/null || {
+            echo 'Installiere vLLM für SM_121 (GB10)...'
+            pip install -q vllm \
+                --extra-index-url https://wheels.vllm.ai/nightly \
+                2>/dev/null || \
+            pip install -q vllm 2>/dev/null
+        }
+
+        echo 'Starte vLLM API Server...'
         python3 -m vllm.entrypoints.openai.api_server \
             --model /app/${MERGED_PATH} \
             --served-model-name text2sql \
