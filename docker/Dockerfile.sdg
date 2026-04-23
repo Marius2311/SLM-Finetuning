@@ -1,9 +1,8 @@
 # =============================================================================
 # Dockerfile.sdg – SDG Hub data generation container
 # =============================================================================
-# Built for NVIDIA GB10 (Blackwell, CUDA 12.x)
+# Built for NVIDIA GB10 (Blackwell, CUDA 13.0)
 # This container handles all data preparation and synthetic data generation.
-# It does NOT need GPU access (all LLM calls go to API or a separate vLLM container).
 # =============================================================================
 
 FROM python:3.11-slim

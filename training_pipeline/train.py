@@ -8,9 +8,6 @@ Supports three training modes (set via config.training.algorithm):
   - "sft"       → Full supervised fine-tuning via InstructLab-Training
   - "osft"      → Orthogonal Subspace FT (continual learning, preserves base skills)
 
-On your GB10 (128GB VRAM), all three modes run comfortably for 7B models.
-LoRA is the default because it's fastest for iteration and produces great results.
-
 Usage:
     python training_pipeline/train.py --config config/pipeline_config.yaml
     python training_pipeline/train.py --config config/pipeline_config.yaml --algorithm lora_sft
@@ -78,7 +75,6 @@ def run_lora_sft(config: dict, model_path: str, data_path: str, dry_run: bool = 
 
     This is the recommended mode for the GB10.
     Uses 4-bit NF4 quantization by default for maximum speed.
-    With 128GB VRAM on the GB10, load_in_4bit=False also works fine.
     """
     try:
         from training_hub import lora_sft

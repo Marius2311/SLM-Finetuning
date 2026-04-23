@@ -89,8 +89,9 @@ class TeacherModelConnector:
             os.environ["ANTHROPIC_API_KEY"] = self.api_key
 
         elif self.backend == "openai":
-            self.api_base = "https://api.openai.com/v1"
+            self.api_base = teacher_cfg["abi_base"]
             self.api_key = teacher_cfg["api_key"]
+            self.deployment_name = teacher_cfg["deployment_name"]
             self.sdg_model_str = f"openai/{self.model}"
             os.environ["OPENAI_API_KEY"] = self.api_key
 
@@ -123,6 +124,8 @@ class TeacherModelConnector:
             cfg["api_base"] = self.api_base
         if self.api_key:
             cfg["api_key"] = self.api_key
+        if self.deployment_name:
+            cfg["deployment_name"] = self.deployment_name
         return cfg
 
 

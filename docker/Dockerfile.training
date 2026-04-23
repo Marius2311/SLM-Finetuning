@@ -5,7 +5,7 @@
 #
 # CRITICAL: The GB10 uses:
 #   - ARM64 (aarch64) CPU – standard x86_64 images throw "exec format error"
-#   - CUDA 13.0 – not CUDA 12.x
+#   - CUDA 13.0
 #   - Blackwell SM_121 – not supported by generic pip PyTorch wheels
 #
 # The ONLY correct base image is NVIDIA's official NGC PyTorch container.
@@ -38,8 +38,6 @@ WORKDIR /app
 COPY docker/requirements_training.txt .
 
 # Install Training Hub
-# Note: we do NOT reinstall torch – the base image has the correct ARM64+CUDA13 build.
-# --no-deps for packages that might try to pull incompatible torch wheels.
 RUN pip install --upgrade pip && \
     pip install training-hub
 

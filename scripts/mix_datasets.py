@@ -61,8 +61,8 @@ def expand_synthetic_examples(generated: list[dict]) -> list[dict]:
     - Schema variant (variant_schema, variant_question, variant_sql)
     - Reasoning trace (reasoning_trace)
 
-    We create separate training examples for each, with appropriate
-    "thinking" (reasoning trace) fields where available.
+    For each, separate training examples with appropriate
+    "thinking" (reasoning trace) fields (where available) are applied.
     """
     expanded = []
 

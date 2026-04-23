@@ -48,8 +48,7 @@ services:
       # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       # - OPENAI_API_KEY=${OPENAI_API_KEY}
 
-    # No GPU needed for SDG (all LLM calls go to external API or vLLM container)
-    # Remove the deploy section entirely for the SDG service
+    # No deploy section as teacher called via API
 
   # ---------------------------------------------------------------------------
   # Training Service – Training Hub LoRA/SFT (GPU required)
@@ -93,7 +92,7 @@ services:
   # Use this if you want to run the teacher model locally (no API costs).
   # The GB10's 128GB VRAM can run Qwen2.5-72B-Instruct in fp8/int4.
   # Start with: docker compose up -d vllm
-  # Then set teacher.backend: vllm_local in your config.
+  # Then set teacher.backend: vllm_local in config.
   # ---------------------------------------------------------------------------
   vllm:
     image: vllm/vllm-openai:latest

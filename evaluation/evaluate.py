@@ -9,7 +9,7 @@ against the actual database.
 
 This is the gold standard metric for Text-to-SQL (used in Spider & BIRD benchmarks).
 
-We also report:
+Also report:
   - Exact Match (EM): predicted SQL == gold SQL (normalized)
   - Per-complexity accuracy breakdown
 

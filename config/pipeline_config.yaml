@@ -10,7 +10,7 @@
 # -----------------------------------------------------------------------------
 teacher:
   # Which backend to use: "anthropic" | "openai" | "vllm_local" | "ollama_local"
-  backend: "anthropic"
+  backend: "openai"
 
   # Anthropic Claude API (used when backend: anthropic)
   anthropic:
@@ -23,6 +23,8 @@ teacher:
   openai:
     api_key: "YOUR_OPENAI_API_KEY"           # <-- fill in
     model: "gpt-4o"
+    api_base: "YOUR_ENDPOINT"
+    deployment_name: "gpt-4.1"
     max_tokens: 2048
     temperature: 0.7
 
@@ -65,15 +67,15 @@ data:
   seed_dataset: "gretelai/synthetic_text_to_sql"
   seed_split: "train"
   # How many seed examples to sample for SDG enrichment
-  seed_sample_size: 2000
+  seed_sample_size: 100 #2000
 
   # How many synthetic examples to generate
-  sdg_target_samples: 5000
+  sdg_target_samples: 50 # 5000
 
   # Final dataset mix ratio: seed vs synthetic
   mix_ratio:
-    seed: 0.4        # 40% original seed data
-    synthetic: 0.6   # 60% newly generated data
+    seed: 0.4        # % of original seed data
+    synthetic: 0.6   # % of newly generated data
 
 # -----------------------------------------------------------------------------
 # SDG PIPELINE (SDG Hub)
@@ -147,8 +149,6 @@ evaluation:
 # INFRASTRUCTURE
 # -----------------------------------------------------------------------------
 infra:
-  # Your GB10 has 128GB unified VRAM – we use it fully
-  # No need for CPU offloading for 7B models
   gpu_memory_utilization: 0.85
 
   # Logging
