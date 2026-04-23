@@ -3,12 +3,13 @@
 # scripts/deploy_vllm.sh
 # =============================================================================
 # Merged das LoRA-Modell mit dem Basismodell und startet einen vLLM Server.
+# Nutzt das NGC PyTorch Image (CUDA 13 / SM_121) – vLLM ist bereits enthalten.
 #
 # Usage:
 #   ./scripts/deploy_vllm.sh <checkpoint_ordner>
 #
 # Beispiel:
-#   ./scripts/deploy_vllm.sh qwen0.5b_text2sql_v1_50seeds_3epochs
+#   ./scripts/deploy_vllm.sh qwen0.5b_50seeds_3epochs_v1
 # =============================================================================
 
 set -e
@@ -27,20 +28,20 @@ ADAPTER_PATH="data/final/checkpoints/${CHECKPOINT_NAME}"
 MERGED_PATH="data/final/checkpoints/${CHECKPOINT_NAME}_merged"
 PORT=8000
 
-if [ ! -d "$ADAPTER_PATH" ]; then
+if [ ! -d "$ADAPTER_PATH" ] && [ ! -d "$MERGED_PATH" ]; then
     echo "Fehler: Checkpoint nicht gefunden: $ADAPTER_PATH"
     exit 1
 fi
 
 echo "============================================================"
 echo "  Text-to-SQL Modell Deployment"
-echo "  Adapter:  $ADAPTER_PATH"
-echo "  Merged:   $MERGED_PATH"
-echo "  Port:     $PORT"
+echo "  Checkpoint: $CHECKPOINT_NAME"
+echo "  Merged:     $MERGED_PATH"
+echo "  Port:       $PORT"
 echo "============================================================"
 
 # ---------------------------------------------------------------------------
-# Schritt 1: LoRA Adapter in Basismodell mergen (falls noch nicht geschehen)
+# Schritt 1: LoRA Adapter mergen (falls noch nicht geschehen)
 # ---------------------------------------------------------------------------
 if [ ! -d "$MERGED_PATH" ]; then
     echo ""
@@ -52,32 +53,29 @@ if [ ! -d "$MERGED_PATH" ]; then
         --config config/pipeline_config.yaml
     echo "✓ Merge abgeschlossen: $MERGED_PATH"
 else
-    echo "[1/2] Merged Modell bereits vorhanden: $MERGED_PATH"
+    echo "[1/2] Merged Modell bereits vorhanden – überspringe Merge."
 fi
 
 # ---------------------------------------------------------------------------
 # Schritt 2: vLLM Server starten
+# Das NGC PyTorch Image enthält bereits vLLM mit CUDA 13 / SM_121 Support.
 # ---------------------------------------------------------------------------
 echo ""
 echo "[2/2] Starte vLLM Server auf Port $PORT..."
+echo "      Modell: $MERGED_PATH"
 echo "      Zum Beenden: Ctrl+C"
 echo ""
 
-docker run --rm \
-    --gpus all \
-    --name text2sql_vllm_serve \
-    -v "$(pwd)/$MERGED_PATH:/model" \
-    -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
+docker compose -f docker/docker-compose.yml run --rm \
     -p ${PORT}:8000 \
-    nvcr.io/nvidia/pytorch:25.11-py3 \
-    bash -c "
-        pip install -q vllm &&
+    training bash -c "
         python3 -m vllm.entrypoints.openai.api_server \
-            --model /model \
+            --model /app/${MERGED_PATH} \
             --served-model-name text2sql \
             --host 0.0.0.0 \
             --port 8000 \
             --dtype bfloat16 \
             --max-model-len 2048 \
-            --gpu-memory-utilization 0.85
+            --gpu-memory-utilization 0.85 \
+            --trust-remote-code
     "
