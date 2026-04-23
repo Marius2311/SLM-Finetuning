@@ -20,7 +20,7 @@ teacher:
     deployment_name: "gpt-4.1"
     max_tokens: 2048
     temperature: 0.7
-  
+
   # OpenAI-compatible API – standard OpenAI or generic custom endpoint
   openai:
     api_key: "YOUR_API_KEY"
@@ -78,7 +78,9 @@ data:
   seed_sample_size: 2000 #2000
 
   # How many synthetic examples to generate
-  sdg_target_samples: 50 # 5000
+  sdg_seed_input_size: 50 # 5000
+
+  max_concurrency: 5
 
   # Final dataset mix ratio: seed vs synthetic
   mix_ratio:

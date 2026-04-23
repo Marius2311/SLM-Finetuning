@@ -198,8 +198,9 @@ def run_sdg_pipeline(
             if line:
                 examples.append(json.loads(line))
 
+    import random
+    n_samples = config["data"].get("sdg_seed_input_size")
     if n_samples:
-        import random
         random.shuffle(examples)
         examples = examples[:n_samples]
     logger.info(f"Seed examples to process: {len(examples)}")
