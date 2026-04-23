@@ -67,7 +67,7 @@ data:
   seed_dataset: "gretelai/synthetic_text_to_sql"
   seed_split: "train"
   # How many seed examples to sample for SDG enrichment
-  seed_sample_size: 100 #2000
+  seed_sample_size: 2000 #2000
 
   # How many synthetic examples to generate
   sdg_target_samples: 50 # 5000

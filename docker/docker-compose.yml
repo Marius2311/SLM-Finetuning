@@ -65,7 +65,7 @@ services:
       - ../data:/app/data
       - ../logs:/app/logs
       - hf_cache:/data/hf_cache
-      - ../config/pipeline_config.local.yaml:/app/config/pipeline_config.local.yaml:ro
+      - ../config/pipeline_config.yaml:/app/config/pipeline_config.yaml:ro
 
     environment:
       - PYTHONUNBUFFERED=1
