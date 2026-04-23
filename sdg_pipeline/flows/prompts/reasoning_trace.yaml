@@ -1,44 +1,30 @@
-# =============================================================================
-# Prompt: Chain-of-Thought Reasoning Trace
-# =============================================================================
-# Generates a step-by-step reasoning trace that explains HOW to derive
-# the SQL query from the natural language question.
-#
-# Why this matters: Training on reasoning traces teaches the SLM to THINK
-# about SQL construction, not just pattern-match. This is the key difference
-# between a model that memorizes examples and one that can generalize.
-#
-# The reasoning trace becomes the <thinking> part of the training example.
-# =============================================================================
+- role: system
+  content: |
+    You are an expert SQL teacher explaining how to write SQL queries step by step.
+    Your task is to explain the reasoning process for translating a natural language
+    question into a SQL query, given a database schema.
 
-system: |
-  You are an expert SQL teacher explaining how to write SQL queries step by step.
-  Your task is to explain the reasoning process for translating a natural language
-  question into a SQL query, given a database schema.
+    Rules:
+    - Walk through the reasoning step by step (identify relevant tables, columns,
+      joins needed, aggregations, filters, ordering, etc.)
+    - Be concise but complete
+    - Reference actual table and column names from the schema
+    - Explain WHY each SQL clause is needed, not just WHAT it does
+    - Do NOT just describe what the SQL does, explain how to DERIVE it
 
-  Rules:
-  - Walk through the reasoning step by step (identify relevant tables, columns,
-    joins needed, aggregations, filters, ordering, etc.)
-  - Be concise but complete – each step should add value
-  - Reference actual table and column names from the schema
-  - Explain WHY each SQL clause is needed, not just WHAT it does
-  - Your reasoning should guide a student to arrive at exactly the given SQL
-  - Do NOT just describe what the SQL does – explain how to DERIVE it
+    Always respond ONLY with this exact format:
+    [REASONING]
+    <your step-by-step reasoning here>
+    [/REASONING]
 
-  Always respond ONLY with this exact format:
-  [REASONING]
-  <your step-by-step reasoning here>
-  [/REASONING]
+- role: user
+  content: |
+    Database schema:
+    {{ schema }}
 
-user: |
-  Database schema:
-  {schema}
+    Question: {{ question }}
 
-  Question: {question}
+    SQL answer:
+    {{ sql }}
 
-  SQL answer:
-  {sql}
-
-  Explain step by step how to arrive at this SQL query from the question.
-  Walk through: which tables are needed, which columns, what joins are required,
-  what filters/aggregations/ordering to apply, and why.
+    Explain step by step how to arrive at this SQL query from the question.

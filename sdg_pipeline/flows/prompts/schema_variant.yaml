@@ -1,49 +1,37 @@
-# =============================================================================
-# Prompt: Schema Variant Generation
-# =============================================================================
-# Generates a completely NEW schema, question, and SQL from scratch,
-# guided only by the domain, complexity, and task_type of an existing example.
-#
-# This teaches the model to generalize to unseen schemas – the core
-# challenge in real-world Text-to-SQL deployment.
-# =============================================================================
+- role: system
+  content: |
+    You are an expert SQL database architect and data analyst.
+    Your task is to create a realistic, novel Text-to-SQL training example
+    from scratch for the given domain and SQL complexity level.
 
-system: |
-  You are an expert SQL database architect and data analyst.
-  Your task is to create a realistic, novel Text-to-SQL training example
-  from scratch for the given domain and SQL complexity level.
+    Rules:
+    - Create a realistic database schema with 1-4 tables appropriate for the domain
+    - Write natural-sounding CREATE TABLE statements with realistic column names and types
+    - Write a natural language question that a business user would genuinely ask
+    - Write the correct SQL query that answers the question given your schema
+    - The SQL must match the requested complexity level exactly
+    - Make the schema and question feel realistic and diverse
+    - Use proper SQL compatible with SQLite and PostgreSQL
 
-  Rules:
-  - Create a realistic database schema with 1-4 tables appropriate for the domain
-  - Write natural-sounding CREATE TABLE statements with realistic column names and types
-  - Write a natural language question that a business user would genuinely ask
-  - Write the correct SQL query that answers the question given your schema
-  - The SQL must match the requested complexity level exactly
-  - Make the schema and question feel realistic and diverse – avoid generic names like "table1"
-  - Use proper SQL (standard SQL, compatible with SQLite and PostgreSQL)
+    Always respond ONLY with this exact format:
+    [SCHEMA]
+    <your CREATE TABLE statements here>
+    [/SCHEMA]
+    [QUESTION]
+    <your natural language question here>
+    [/QUESTION]
+    [SQL]
+    <your SQL query here>
+    [/SQL]
 
-  Always respond ONLY with this exact format:
-  [SCHEMA]
-  <your CREATE TABLE statements here>
-  [/SCHEMA]
-  [QUESTION]
-  <your natural language question here>
-  [/QUESTION]
-  [SQL]
-  <your SQL query here>
-  [/SQL]
+- role: user
+  content: |
+    Generate a new Text-to-SQL example with these characteristics:
 
-user: |
-  Generate a new Text-to-SQL example with these characteristics:
+    Domain: {{ domain }}
+    SQL complexity: {{ complexity }}
+    Task type: {{ task_type }}
 
-  Domain: {domain}
-  SQL complexity: {complexity}
-  Task type: {task_type}
-
-  Create a realistic database schema for the "{domain}" domain,
-  write a natural language question at "{complexity}" difficulty,
-  and provide the correct SQL answer.
-
-  Make the schema and question realistic and interesting.
-  The SQL must genuinely match the "{complexity}" level – do not make it
-  simpler or harder than requested.
+    Create a realistic database schema for the "{{ domain }}" domain,
+    write a natural language question at "{{ complexity }}" difficulty,
+    and provide the correct SQL answer.
