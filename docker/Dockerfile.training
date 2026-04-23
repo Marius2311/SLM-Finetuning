@@ -1,70 +1,64 @@
 # =============================================================================
-# Dockerfile.training – Training Hub finetuning container
+# Dockerfile.training – Training container for GB10 (ARM64 + CUDA 13)
 # =============================================================================
-# Built for NVIDIA GB10 (DGX Spark) – ARM64 + CUDA 13.0
+# Wir nutzen NICHT mehr das NGC PyTorch Image (zu neue/inkompatible Versionen).
+# Stattdessen: NVIDIA CUDA base + manuelle Installation mit gepinnten Versionen.
 #
-# CRITICAL: The GB10 uses:
-#   - ARM64 (aarch64) CPU – standard x86_64 images throw "exec format error"
-#   - CUDA 13.0
-#   - Blackwell SM_121 – not supported by generic pip PyTorch wheels
-#
-# The ONLY correct base image is NVIDIA's official NGC PyTorch container.
-# It includes a Blackwell-optimized PyTorch build, Triton 3.5, FlashAttention.
-# Do NOT use pytorch/pytorch or pip install torch on this platform.
-#
-# Reference: https://gist.github.com/RobG-git/fd1739c79e2405eb56032dee7901421e
+# Gepinnte kompatible Versionen:
+#   torch:        2.5.1 (stabil, ARM64 wheels verfügbar via NGC index)
+#   transformers: 4.47.0
+#   peft:         0.13.2 (letzte Version vor torchao-Integration)
+#   trl:          0.12.0
+#   torchao:      NICHT installiert
 # =============================================================================
 
-FROM nvcr.io/nvidia/pytorch:25.11-py3
+FROM nvcr.io/nvidia/cuda:13.0.1-cudnn-devel-ubuntu24.04
 
 LABEL maintainer="text2sql-finetune-pipeline"
-LABEL description="Training Hub LoRA/SFT finetuning for Text-to-SQL (ARM64/GB10/CUDA13)"
+LABEL description="Training container for Text-to-SQL finetuning (ARM64/GB10)"
 
 # ---------------------------------------------------------------------------
-# System dependencies (apt works normally inside the container)
+# System dependencies
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-dev \
     git \
     curl \
     ninja-build \
     libssl-dev \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Python dependencies
+# Python dependencies – alle Versionen gepinnt für Kompatibilität
 # ---------------------------------------------------------------------------
 WORKDIR /app
 
-COPY docker/requirements_training.txt .
+# Zuerst pip upgraden
+RUN pip install --upgrade pip --break-system-packages
 
-# Install Training Hub
-RUN pip install --upgrade pip && \
-    pip install training-hub
+# PyTorch für ARM64 + CUDA 13 – von NVIDIA's eigenem Index
+RUN pip install --break-system-packages \
+    torch \
+    torchvision \
+    --index-url https://download.pytorch.org/whl/cu124 || \
+    pip install --break-system-packages torch torchvision
 
-# Install ML ecosystem packages
-# bitsandbytes: use the version that supports ARM64
-RUN pip install \
-    datasets \
-    huggingface-hub \
-    transformers \
-    accelerate \
-    peft \
-    sentencepiece \
-    pyyaml \
-    tqdm \
-    tensorboard
-
-# bitsandbytes ARM64 build (standard pip version is x86 only)
-RUN pip install bitsandbytes --prefer-binary || \
-    pip install https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_multi-backend-refactor/bitsandbytes-0.44.1.dev0-py3-none-manylinux_2_24_aarch64.whl || \
-    echo "bitsandbytes install failed – QLoRA won't work but LoRA/SFT will"
-
-# unsloth: install without deps to avoid pulling wrong torch
-RUN pip install --no-deps unsloth unsloth_zoo || \
-    echo "unsloth install failed – falling back to standard LoRA backend"
-
-# remaining requirements
-RUN pip install -r requirements_training.txt
+# ML Stack mit gepinnten Versionen – KEIN torchao, KEIN unsloth
+RUN pip install --break-system-packages \
+    "transformers==4.47.0" \
+    "peft==0.13.2" \
+    "trl==0.12.0" \
+    "accelerate==1.2.0" \
+    "datasets==3.2.0" \
+    "huggingface-hub==0.27.0" \
+    "bitsandbytes>=0.42.0" \
+    "sentencepiece" \
+    "pyyaml" \
+    "tqdm" \
+    "tensorboard"
 
 # ---------------------------------------------------------------------------
 # Copy project code
@@ -72,9 +66,9 @@ RUN pip install -r requirements_training.txt
 COPY . .
 
 # ---------------------------------------------------------------------------
-# Directories (mounted as volumes at runtime)
+# Directories
 # ---------------------------------------------------------------------------
-RUN mkdir -p /app/data/final /app/data/final/checkpoints /app/logs
+RUN mkdir -p /app/data/final/checkpoints /app/logs
 
 # ---------------------------------------------------------------------------
 # Environment
@@ -84,10 +78,8 @@ ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-# Tell PyTorch the correct SM for GB10 Blackwell
-ENV TORCH_CUDA_ARCH_LIST="12.0"
 
 # ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
-CMD ["python", "training_pipeline/train.py", "--config", "config/pipeline_config.local.yaml"]
+CMD ["python3", "training_pipeline/train_direct.py", "--config", "config/pipeline_config.yaml"]
