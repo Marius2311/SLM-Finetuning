@@ -9,7 +9,7 @@ against the actual database.
 
 This is the gold standard metric for Text-to-SQL (used in Spider & BIRD benchmarks).
 
-Also report:
+We also report:
   - Exact Match (EM): predicted SQL == gold SQL (normalized)
   - Per-complexity accuracy breakdown
 
@@ -366,7 +366,11 @@ def main():
     print_results(results)
 
     # Save results
-    output_path = args.output or f"evaluation_results_{Path(args.model_path).name}.json"
+    # Eval-Ergebnisse in data/final/eval/<modellname>/results.json speichern
+    model_name = Path(args.model_path).name
+    eval_dir = Path(config["data"]["final_dir"]) / "eval" / model_name
+    eval_dir.mkdir(parents=True, exist_ok=True)
+    output_path = args.output or str(eval_dir / "results.json")
     with open(output_path, "w") as f:
         # Don't serialize all examples by default (can be very large)
         summary = {k: v for k, v in results.items() if k != "examples"}

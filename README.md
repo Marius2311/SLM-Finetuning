@@ -134,9 +134,12 @@ docker compose -f docker/docker-compose.yml run --rm training \
 ### 7. Evaluate
 
 ```bash
-docker compose run --rm training python evaluation/evaluate.py \
-  --model-path ./data/final/checkpoints/final \
-  --benchmark spider
+docker compose -f docker/docker-compose.yml run --rm training \
+  python3 evaluation/evaluate.py \
+  --config config/pipeline_config.yaml \
+  --model-path data/final/checkpoints/lora \
+  --use-adapter \
+  --n-samples 50
 ```
 
 ## Teacher Model Backends (Modular)
@@ -151,13 +154,3 @@ The SDG pipeline supports multiple teacher backends via `config/teacher_backends
 | Ollama local         | `ollama_local` | Easiest local setup      |
 
 Switch backends by setting `TEACHER_BACKEND` in your config.
-
-## Model Choice: Qwen2.5-7B-Instruct
-
-Selected because:
-
-- Strong baseline code/SQL understanding
-- Fits comfortably in 128GB VRAM (GB10)
-- Excellent Text-to-SQL finetuning results in literature
-- Apache 2.0 license
-- Supported by Training Hub / Unsloth backend

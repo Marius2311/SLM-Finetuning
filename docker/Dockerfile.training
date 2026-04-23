@@ -1,14 +1,23 @@
 # =============================================================================
-# Dockerfile.training – Training container for GB10 (ARM64 + CUDA 13 + SM_121)
+# Dockerfile.training – Training container für GB10 (ARM64 + CUDA 13 + SM_121)
 # =============================================================================
-# MUSS das NGC PyTorch Image nutzen – einzige Quelle für SM_121-kompatibles
-# PyTorch. Wir pinnen nur peft auf eine Version ohne torchao-Abhängigkeit.
+# Getestete funktionierende Versionskombination (Stand 23.04.2026):
+#
+#   Base:          nvcr.io/nvidia/pytorch:25.11-py3
+#                  → einzige Quelle für SM_121-kompatibles PyTorch (2.10 nv25.11)
+#   peft:          0.13.2 (--no-deps!) → letzte Version OHNE torchao-Abhängigkeit
+#   accelerate:    >=1.3.0 → braucht keep_torch_compile API für transformers 5.6
+#   transformers:  5.6.2 (NGC nativ, NICHT downgraden)
+#   trl:           0.12.0 (NGC nativ)
+#
+# WICHTIG: peft MUSS mit --no-deps installiert werden, sonst zieht pip
+#          torchao rein, das mit PyTorch 2.10/SM_121 inkompatibel ist.
 # =============================================================================
 
 FROM nvcr.io/nvidia/pytorch:25.11-py3
 
 LABEL maintainer="text2sql-finetune-pipeline"
-LABEL description="Training container for Text-to-SQL finetuning (ARM64/GB10/SM_121)"
+LABEL description="Training Hub LoRA Finetuning für Text-to-SQL (ARM64/GB10/SM_121)"
 
 # ---------------------------------------------------------------------------
 # System dependencies
@@ -16,40 +25,25 @@ LABEL description="Training container for Text-to-SQL finetuning (ARM64/GB10/SM_
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
-    ninja-build \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Python dependencies
+# Python dependencies – in dieser Reihenfolge installieren!
 # ---------------------------------------------------------------------------
 WORKDIR /app
 
-COPY docker/requirements_training.txt .
+# 1. peft 0.13.2 ohne Dependencies (KEIN torchao!)
+RUN pip install --no-deps 'peft==0.13.2'
 
-# Deinstalliere problematische Pakete die mit NGC-Versionen kollidieren
-RUN pip uninstall -y torchao unsloth unsloth-zoo 2>/dev/null || true
+# 2. accelerate upgraden (NGC hat 1.2.0, wir brauchen >=1.3.0)
+RUN pip install 'accelerate>=1.3.0'
 
-# Installiere peft 0.13.2 – letzte Version OHNE torchao-Abhängigkeit
-# Danach transformers, trl, datasets kompatibel mit NGC-Versionen
-RUN pip install --no-deps \
-    "peft==0.13.2"
-
+# 3. Weitere benötigte Pakete (transformers + trl kommen vom NGC Image)
 RUN pip install \
-    "transformers==4.47.0" \
-    "trl==0.12.0" \
-    "accelerate==1.2.0" \
-    "datasets==3.2.0" \
-    "huggingface-hub==0.27.0" \
-    "sentencepiece" \
-    "pyyaml" \
-    "tqdm" \
-    "tensorboard"
-
-# training-hub installieren (ohne cuda extras – PyTorch kommt vom NGC Image)
-RUN pip install training-hub
-
-RUN pip install -r requirements_training.txt
+    pyyaml \
+    tensorboard \
+    sentencepiece
 
 # ---------------------------------------------------------------------------
 # Copy project code
@@ -57,7 +51,7 @@ RUN pip install -r requirements_training.txt
 COPY . .
 
 # ---------------------------------------------------------------------------
-# Directories
+# Verzeichnisse
 # ---------------------------------------------------------------------------
 RUN mkdir -p /app/data/final/checkpoints /app/logs
 
@@ -65,7 +59,6 @@ RUN mkdir -p /app/data/final/checkpoints /app/logs
 # Environment
 # ---------------------------------------------------------------------------
 ENV HF_HOME=/root/.cache/huggingface
-ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -74,4 +67,4 @@ ENV TORCH_CUDA_ARCH_LIST="12.0"
 # ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
-CMD ["python3", "training_pipeline/train_direct.py", "--config", "config/pipeline_config.yaml"]
+CMD ["python3", "training_pipeline/train.py", "--config", "config/pipeline_config.yaml", "--algorithm", "lora_sft"]
