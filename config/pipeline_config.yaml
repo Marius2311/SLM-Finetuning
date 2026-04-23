@@ -12,18 +12,19 @@ teacher:
   # Which backend to use: "anthropic" | "openai" | "vllm_local" | "ollama_local"
   backend: "openai"
 
+  # OpenAI API (used when backend: openai)
+  openai:
+    api_key: ""
+    api_base: ""
+    model: "gpt-4.1"
+    deployment_name: "gpt-4.1"
+    max_tokens: 2048
+    temperature: 0.7
+    
   # Anthropic Claude API (used when backend: anthropic)
   anthropic:
     api_key: "YOUR_ANTHROPIC_API_KEY"        # <-- fill in
     model: "claude-sonnet-4-20250514"
-    max_tokens: 2048
-    temperature: 0.7
-
-  # OpenAI API (used when backend: openai)
-  openai:
-    api_key: "YOUR_OPENAI_API_KEY"
-    api_base: "YOUR_ENDPOINT"
-    deployment_name: "gpt-4.1"
     max_tokens: 2048
     temperature: 0.7
 
