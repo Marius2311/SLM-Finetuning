@@ -10,14 +10,22 @@
 # -----------------------------------------------------------------------------
 teacher:
   # Which backend to use: "anthropic" | "openai" | "vllm_local" | "ollama_local"
-  backend: "openai"
+  backend: "azure"
 
-  # OpenAI API (used when backend: openai)
-  openai:
+  # Azure openAI
+  azure:
     api_key: ""
     api_base: ""
     model: "gpt-4.1"
     deployment_name: "gpt-4.1"
+    max_tokens: 2048
+    temperature: 0.7
+  
+  # OpenAI-compatible API – standard OpenAI or generic custom endpoint
+  openai:
+    api_key: "YOUR_API_KEY"
+    model: "gpt-4o"
+    api_base: "https://YOUR_ENDPOINT/v1"     # include /v1
     max_tokens: 2048
     temperature: 0.7
 

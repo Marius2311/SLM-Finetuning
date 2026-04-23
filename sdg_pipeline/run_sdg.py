@@ -92,11 +92,24 @@ class TeacherModelConnector:
             os.environ["ANTHROPIC_API_KEY"] = self.api_key
 
         elif self.backend == "openai":
-            self.api_base = teacher_cfg["api_base"]
+            self.api_base = teacher_cfg.get("api_base", "https://api.openai.com/v1")
             self.api_key = teacher_cfg["api_key"]
-            self.deployment_name = teacher_cfg["deployment_name"]
-            self.sdg_model_str = f"openai/{self.model}"
-            os.environ["OPENAI_API_KEY"] = self.api_key
+            self.api_version = teacher_cfg.get("api_version", "2024-02-01")
+
+            # Detect Azure endpoint automatically by URL pattern
+            is_azure = "openai.azure.com" in self.api_base
+            if is_azure:
+                # LiteLLM requires "azure/<deployment>" for Azure OpenAI
+                self.sdg_model_str = f"azure/{self.model}"
+                os.environ["AZURE_API_KEY"] = self.api_key
+                os.environ["AZURE_API_BASE"] = self.api_base
+                os.environ["AZURE_API_VERSION"] = self.api_version
+                logger.info(f"  Detected Azure endpoint → using model string: {self.sdg_model_str}")
+            else:
+                self.sdg_model_str = f"openai/{self.model}"
+                os.environ["OPENAI_API_KEY"] = self.api_key
+                os.environ["OPENAI_API_BASE"] = self.api_base
+                logger.info(f"  Standard OpenAI endpoint → using model string: {self.sdg_model_str}")
 
         elif self.backend == "azure":
             # Azure OpenAI via LiteLLM
@@ -144,7 +157,8 @@ class TeacherModelConnector:
         if self.api_key:
             cfg["api_key"] = self.api_key
         # Azure needs api_version passed explicitly
-        if self.backend == "azure":
+        # (also when Azure is auto-detected via openai backend)
+        if hasattr(self, "api_version") and self.api_version:
             cfg["api_version"] = self.api_version
         return cfg
 
