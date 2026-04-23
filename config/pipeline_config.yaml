@@ -20,7 +20,7 @@ teacher:
     deployment_name: "gpt-4.1"
     max_tokens: 2048
     temperature: 0.7
-    
+
   # Anthropic Claude API (used when backend: anthropic)
   anthropic:
     api_key: "YOUR_ANTHROPIC_API_KEY"        # <-- fill in

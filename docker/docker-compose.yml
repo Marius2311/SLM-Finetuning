@@ -32,14 +32,14 @@ services:
 
     volumes:
       # Project code (live mount for development – remove for production)
-      - ..:/app:ro
+      - ..:/app
       # Data directories (read-write, persist between runs)
       - ../data:/app/data
       - ../logs:/app/logs
       # HuggingFace model cache (shared with training service)
       - hf_cache:/data/hf_cache
       # Your local config with API keys (gitignored)
-      - ../config/pipeline_config.local.yaml:/app/config/pipeline_config.local.yaml:ro
+      - ../config/pipeline_config.local.yaml:/app/config/pipeline_config.local.yaml
 
     environment:
       - PYTHONUNBUFFERED=1
@@ -61,11 +61,11 @@ services:
     container_name: text2sql_training
 
     volumes:
-      - ..:/app:ro
+      - ..:/app
       - ../data:/app/data
       - ../logs:/app/logs
       - hf_cache:/data/hf_cache
-      - ../config/pipeline_config.yaml:/app/config/pipeline_config.yaml:ro
+      - ../config/pipeline_config.yaml:/app/config/pipeline_config.yaml
 
     environment:
       - PYTHONUNBUFFERED=1
