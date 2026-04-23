@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Schema of the gretelai/synthetic_text_to_sql dataset
-# Relevant columns:
+# Columns we care about:
 #   sql_prompt        – natural language question
 #   sql_context       – CREATE TABLE statements (schema)
 #   sql               – ground-truth SQL query
@@ -62,6 +62,7 @@ def load_config(config_path: str) -> dict:
 def quality_filter(example: dict) -> bool:
     """
     Returns True if the example passes quality checks.
+    We want clean, non-trivial, well-formed examples.
     """
     sql = example.get("sql", "")
     context = example.get("sql_context", "")
@@ -89,7 +90,7 @@ def quality_filter(example: dict) -> bool:
 def normalize_example(example: dict) -> dict:
     """
     Normalizes a raw dataset example into a clean, consistent dict.
-    This is the recurring format used throughout the pipeline.
+    This is the canonical format used throughout the pipeline.
     """
     return {
         # Core fields
@@ -100,7 +101,7 @@ def normalize_example(example: dict) -> dict:
         # Metadata (useful for stratified sampling in SDG)
         "domain": example.get("domain", "unknown"),
         "complexity": example.get("sql_complexity", "unknown"),
-        "task_type": example.get("sql_task_type", "unknown"),
+        "task_type": example.get("sql_task_type", "analytics and reporting"),
         # Source tracking
         "source": "gretelai/synthetic_text_to_sql",
         "split": "seed",
@@ -109,8 +110,8 @@ def normalize_example(example: dict) -> dict:
 
 def stratified_sample(examples: list[dict], n: int) -> list[dict]:
     """
-    Sample n examples with stratification over complexity levels.
-    Results in balanced distribution of easy/hard SQL.
+    Sample n examples with stratification over complexity levels,
+    so we get a balanced distribution of easy/hard SQL.
     """
     by_complexity = {}
     for ex in examples:
@@ -124,7 +125,7 @@ def stratified_sample(examples: list[dict], n: int) -> list[dict]:
         sampled.extend(random.sample(items, k))
         logger.info(f"  complexity='{level}': sampled {k}/{len(items)}")
 
-    # If we're under desired amount, top up randomly
+    # If we're under budget, top up randomly
     remaining = n - len(sampled)
     if remaining > 0:
         pool = [ex for ex in examples if ex not in sampled]

@@ -75,7 +75,10 @@ class TeacherModelConnector:
 
     def __init__(self, teacher_cfg: dict):
         self.backend = teacher_cfg["backend"]
-        self.model = teacher_cfg["model"]
+        # "model" kann auch "deployment_name" heißen (Azure/custom endpoints)
+        self.model = teacher_cfg.get("model") or teacher_cfg.get("deployment_name")
+        if not self.model:
+            raise KeyError("Config muss entweder 'model' oder 'deployment_name' enthalten")
         self.max_tokens = teacher_cfg.get("max_tokens", 2048)
         self.temperature = teacher_cfg.get("temperature", 0.7)
 
@@ -89,11 +92,27 @@ class TeacherModelConnector:
             os.environ["ANTHROPIC_API_KEY"] = self.api_key
 
         elif self.backend == "openai":
-            self.api_base = teacher_cfg["abi_base"]
+            self.api_base = teacher_cfg["api_base"]
             self.api_key = teacher_cfg["api_key"]
             self.deployment_name = teacher_cfg["deployment_name"]
             self.sdg_model_str = f"openai/{self.model}"
             os.environ["OPENAI_API_KEY"] = self.api_key
+
+        elif self.backend == "azure":
+            # Azure OpenAI via LiteLLM
+            # LiteLLM model string format: "azure/<deployment_name>"
+            self.deployment_name = teacher_cfg["deployment_name"]
+            self.api_base = teacher_cfg["api_base"].rstrip("/")  # no trailing slash
+            self.api_key = teacher_cfg["api_key"]
+            self.api_version = teacher_cfg.get("api_version", "2024-02-01")
+            self.sdg_model_str = f"azure/{self.deployment_name}"
+            # LiteLLM reads these from environment
+            os.environ["AZURE_API_KEY"] = self.api_key
+            os.environ["AZURE_API_BASE"] = self.api_base
+            os.environ["AZURE_API_VERSION"] = self.api_version
+            logger.info(f"  Azure endpoint: {self.api_base}")
+            logger.info(f"  Azure deployment: {self.deployment_name}")
+            logger.info(f"  Azure API version: {self.api_version}")
 
         elif self.backend == "vllm_local":
             self.api_base = teacher_cfg["api_base"]
@@ -124,8 +143,9 @@ class TeacherModelConnector:
             cfg["api_base"] = self.api_base
         if self.api_key:
             cfg["api_key"] = self.api_key
-        if self.deployment_name:
-            cfg["deployment_name"] = self.deployment_name
+        # Azure needs api_version passed explicitly
+        if self.backend == "azure":
+            cfg["api_version"] = self.api_version
         return cfg
 
 
@@ -153,14 +173,7 @@ def run_sdg_pipeline(
         logger.error("Install with: pip install sdg-hub datasets")
         sys.exit(1)
 
-    # Register custom blocks (SQLComplexityFilterBlock)
-    logger.info("Registering custom blocks...")
-    sys.path.insert(0, str(Path(__file__).parent))
-    try:
-        import blocks.sql_complexity_filter  # noqa: F401 – triggers @BlockRegistry.register
-        logger.info("  ✓ SQLComplexityFilterBlock registered")
-    except ImportError as e:
-        logger.warning(f"  Could not register custom blocks: {e}")
+    logger.info("Initializing SDG pipeline...")
 
     # Load seed data
     logger.info(f"Loading seed data from: {seed_path}")
@@ -212,12 +225,17 @@ def run_sdg_pipeline(
     elapsed = time.time() - start
     logger.info(f"Generation complete in {elapsed:.1f}s ({len(result_dataset)} examples)")
 
-    # Filter low-quality examples
-    min_score = config["sdg"].get("min_quality_score", 0.7)
+    # Quality filter: keep rows where key fields were successfully parsed
     before = len(result_dataset)
-    result_dataset = result_dataset.filter(lambda x: x.get("quality_score", 0) >= min_score)
+    def has_required_fields(row):
+        return (
+            bool(row.get("upgraded_sql", "").strip()) and
+            bool(row.get("upgraded_question", "").strip()) and
+            bool(row.get("reasoning_trace", "").strip())
+        )
+    result_dataset = result_dataset.filter(has_required_fields)
     after = len(result_dataset)
-    logger.info(f"Quality filter (min_score={min_score}): {before} → {after} examples kept ({after/before:.1%})")
+    logger.info(f"Quality filter: {before} → {after} examples kept ({after/before:.1%})")
 
     # Save output
     output_dir.mkdir(parents=True, exist_ok=True)

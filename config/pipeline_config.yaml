@@ -21,8 +21,7 @@ teacher:
 
   # OpenAI API (used when backend: openai)
   openai:
-    api_key: "YOUR_OPENAI_API_KEY"           # <-- fill in
-    model: "gpt-4o"
+    api_key: "YOUR_OPENAI_API_KEY"
     api_base: "YOUR_ENDPOINT"
     deployment_name: "gpt-4.1"
     max_tokens: 2048
