@@ -26,10 +26,10 @@ import json
 import logging
 import os
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
+import time
 import yaml
 
 logging.basicConfig(
@@ -198,8 +198,9 @@ def run_sdg_pipeline(
             if line:
                 examples.append(json.loads(line))
 
+    import random
+    n_samples = n_samples or config["data"].get("sdg_seed_input_size") or config["sdg"].get("sdg_seed_input_size")
     if n_samples:
-        import random
         random.shuffle(examples)
         examples = examples[:n_samples]
     logger.info(f"Seed examples to process: {len(examples)}")
@@ -245,7 +246,6 @@ def run_sdg_pipeline(
     logger.info(f"Rate limit Strategie: max_concurrency={max_concurrency}, batch_size={batch_size}, pause={pause_seconds}s")
 
     # Dataset in Batches aufteilen
-    import time
     from datasets import Dataset as HFDataset
 
     all_rows = [dataset[i] for i in range(len(dataset))]
