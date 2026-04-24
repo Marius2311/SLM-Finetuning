@@ -198,9 +198,8 @@ def run_sdg_pipeline(
             if line:
                 examples.append(json.loads(line))
 
-    import random
-    n_samples = config["data"].get("sdg_seed_input_size")
     if n_samples:
+        import random
         random.shuffle(examples)
         examples = examples[:n_samples]
     logger.info(f"Seed examples to process: {len(examples)}")
@@ -236,7 +235,36 @@ def run_sdg_pipeline(
     logger.info(f"Async batch size: {config['sdg'].get('async_batch_size', 32)}")
 
     start = time.time()
-    result_dataset = flow.generate(dataset)
+    # Rate Limit Strategie:
+    # 1. max_concurrency: max parallele Requests pro Batch
+    # 2. Wir splitten das Dataset in kleine Batches mit Pause dazwischen
+    max_concurrency = config["sdg"].get("max_concurrency", 2)
+    batch_size = config["sdg"].get("batch_size", 20)
+    pause_seconds = config["sdg"].get("pause_between_batches_seconds", 15)
+
+    logger.info(f"Rate limit Strategie: max_concurrency={max_concurrency}, batch_size={batch_size}, pause={pause_seconds}s")
+
+    # Dataset in Batches aufteilen
+    import time
+    from datasets import Dataset as HFDataset
+
+    all_rows = [dataset[i] for i in range(len(dataset))]
+    batches = [all_rows[i:i+batch_size] for i in range(0, len(all_rows), batch_size)]
+    logger.info(f"Verarbeite {len(batches)} Batches à {batch_size} Beispiele...")
+
+    result_rows = []
+    for batch_idx, batch in enumerate(batches):
+        logger.info(f"Batch {batch_idx+1}/{len(batches)} ({len(batch)} Beispiele)...")
+        batch_dataset = HFDataset.from_list(batch)
+        batch_result = flow.generate(batch_dataset, max_concurrency=max_concurrency)
+        result_rows.extend([batch_result[i] for i in range(len(batch_result))])
+
+        if batch_idx < len(batches) - 1:
+            logger.info(f"Pause {pause_seconds}s (Rate Limit Schutz)...")
+            time.sleep(pause_seconds)
+
+    from datasets import Dataset as HFDataset2
+    result_dataset = HFDataset2.from_list(result_rows)
     elapsed = time.time() - start
     logger.info(f"Generation complete in {elapsed:.1f}s ({len(result_dataset)} examples)")
 

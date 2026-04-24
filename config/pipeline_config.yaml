@@ -81,6 +81,7 @@ data:
   sdg_seed_input_size: 50 # 5000
 
   max_concurrency: 5
+  min_seconds_between_batches: 10
 
   # Final dataset mix ratio: seed vs synthetic
   mix_ratio:
