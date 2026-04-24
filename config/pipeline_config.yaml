@@ -78,7 +78,7 @@ data:
   seed_sample_size: 2000 #2000
 
   # How many synthetic examples to generate
-  sdg_seed_input_size: 50 # 5000
+  sdg_seed_input_size: 750 # 5000
 
   max_concurrency: 5
   min_seconds_between_batches: 10
@@ -115,6 +115,8 @@ training:
 
   # LoRA hyperparameters (used for lora_sft)
   lora:
+    # lora rank controls how "deep" the training is --> how many weights optimized per matrix
+    # higher: learns more complex patterns
     r: 16
     alpha: 32
     dropout: 0.05
