@@ -1,14 +1,15 @@
 # =============================================================================
 # Dockerfile.training – Training container für GB10 (ARM64 + CUDA 13 + SM_121)
 # =============================================================================
-# Getestete funktionierende Versionskombination (Stand 23.04.2026):
+# Getestete funktionierende Versionskombination (Stand 24.04.2026):
 #
 #   Base:          nvcr.io/nvidia/pytorch:25.11-py3
 #                  → einzige Quelle für SM_121-kompatibles PyTorch (2.10 nv25.11)
 #   peft:          0.13.2 (--no-deps!) → letzte Version OHNE torchao-Abhängigkeit
 #   accelerate:    >=1.3.0 → braucht keep_torch_compile API für transformers 5.6
-#   transformers:  5.6.2 (NGC nativ, NICHT downgraden)
-#   trl:           0.12.0 (NGC nativ)
+#   transformers:  5.6.2 → explizit installiert (nicht im NGC Image enthalten)
+#   trl:           0.12.0 → explizit installiert (nicht im NGC Image enthalten)
+#   datasets:      explizit installiert
 #
 # WICHTIG: peft MUSS mit --no-deps installiert werden, sonst zieht pip
 #          torchao rein, das mit PyTorch 2.10/SM_121 inkompatibel ist.
@@ -29,20 +30,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Python dependencies – in dieser Reihenfolge installieren!
+# Python dependencies – getestete Versionen, in dieser Reihenfolge!
 # ---------------------------------------------------------------------------
 WORKDIR /app
 
 # 1. peft 0.13.2 ohne Dependencies (KEIN torchao!)
 RUN pip install --no-deps 'peft==0.13.2'
 
-# 2. accelerate upgraden (NGC hat 1.2.0, wir brauchen >=1.3.0)
+# 2. accelerate upgraden (NGC hat 1.2.0, wir brauchen >=1.3.0 für transformers 5.6)
 RUN pip install 'accelerate>=1.3.0'
 
-# 3. Weitere benötigte Pakete
+# 3. transformers + trl + datasets (nicht im NGC Image enthalten)
 RUN pip install \
     'transformers==5.6.2' \
-    'datasets>=2.0.0' \
+    'trl==0.12.0' \
+    'datasets>=2.0.0'
+
+# 4. Weitere Hilfspakete
+RUN pip install \
     pyyaml \
     tensorboard \
     sentencepiece
